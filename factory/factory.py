@@ -414,6 +414,9 @@ def pick_footage(e, workdir):
         return None
 
     def pool_clip(cats, beat_i):
+        # MAYAFACTS FIX 2026-10-17: the pool index can reference clips that
+        # are not in the restored assets tarball (index drift) - ffmpeg then
+        # dies mid-render. Only return candidates whose file really exists.
         for c in cats:
             pool = idx.get(c) or []
             if not pool:
@@ -423,6 +426,9 @@ def pick_footage(e, workdir):
             for cand in ordered:
                 key = cand.get("file") or cand.get("url")
                 if key and key not in used_files:
+                    if cand.get("file") and not os.path.exists(
+                            os.path.join(FOOTAGE, cand["file"])):
+                        continue  # index drift: file missing on disk
                     return cand, c
         return None, None
 
@@ -471,6 +477,13 @@ def pick_footage(e, workdir):
                         clip = ccl
                         src = "commons-fresh"
         src = "pixabay-fresh"
+        if not clip and not PIXABAY_KEY:
+            # MAYAFACTS 2026-10-17: without a Pixabay key, Wikimedia Commons
+            # (free license, per-sentence unique) is the best source before
+            # the bundled pool fallback.
+            clip = commons_download(queries[0], beat_i)
+            if clip:
+                src = "commons-fresh"
         if not clip:  # fetch failed/quota -> local pool fallback for this beat
             clip, chosen = pool_clip(cats, beat_i)
             src = f"pool-fallback[{chosen}]" if clip else None
